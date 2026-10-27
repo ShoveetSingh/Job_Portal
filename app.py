@@ -49,8 +49,10 @@ conf = ConnectionConfig(
 
 @app.post('/candidate/register')
 async def create_user(user:Registration,db:Session=Depends(get_db)):
+   
     result= db.execute(text('Select 1 from register where email=:email'),
                       {'email':user.Email}).all()
+   
     if len(result)!=0:
         raise HTTPException(status_code=409,
                             detail='User with this mail id already exists!'
@@ -58,9 +60,11 @@ async def create_user(user:Registration,db:Session=Depends(get_db)):
         
     else:
         encrypt=hash_password(user.password)
+        
         response=db.execute(text('execute dbo.insert_user @Email=:email,@Password=:password,@Email_Verified=:val'),
                             {'email':user.Email,'password':encrypt,'val':0}).all()
         db.commit()
+        
         if len(response)==0:
             raise HTTPException(status_code=404,
                                 detail='Data could not be inserted.')
@@ -68,11 +72,15 @@ async def create_user(user:Registration,db:Session=Depends(get_db)):
              url_token= secrets.token_urlsafe(32)
              hashed_token = hashlib.sha256(url_token.encode('utf-8')).hexdigest
              expiry = datetime.now(timezone.utc) + timedelta(minutes=15)
+            
              res=db.execute(text('execute dbo.insert_token @Token=:token,@Expiry=:expiry,@Email=email'),
                             {'token':hashed_token,'expiry':expiry.replace(tzinfo=None),'email':user.Email})
+             
              if len(res)==0:
                  raise HTTPException(status_code=412,detail='Token cannot be stored in db.')
+            
              verification_link = f"http://localhost:5173/verify-email?token={url_token}"
+             
              message =MessageSchema(
             subject='Congratulations user you have successfully registered.',
             recipients=[user.Email],
@@ -84,19 +92,24 @@ async def create_user(user:Registration,db:Session=Depends(get_db)):
         )
              fm=FastMail(conf)
              await fm.send_message(message)
+            
              return {'message':'User registered! Mail sent.'}
 
 @app.post('/candidate/verify')
 async def verify(t:Token,db:Session=Depends(get_db)):
+     
      hashed_token = hashlib.sha256(t.token.encode('utf-8')).hexdigest
      time = datetime.now(timezone.utc)
+     
      result=db.execute(text('select * from OAuth where token=:hashed_token;'),
                        {'hashed_token':hashed_token}).all()
      
      if len(result)==0:
          raise HTTPException(status_code=416,detail='Token does not exists.')
+    
      db.execute(text('Delete * from OAuth where Token=:token'),
                 {'token':hashed_token})
+    
      if result[0][1]<time:
          #delete from Register Table.
           db.execute(text('Delete * from Register where Email=:email'),
@@ -105,67 +118,116 @@ async def verify(t:Token,db:Session=Depends(get_db)):
      #update Regsiter table email verified column.
      db.execute(text('Update Register set Email_Verified=:number where Email=:email'),
                 {'number':1,'email':result[0][2]})
+     
      return {'message':'Email successfully verified.'}
 
 @app.post('/logout')
 async def logout(request:Request,response:Response):
+   
     request.session.clear()
     response.delete_cookie(key='session')
     return {'message':'User logged out.'}
 
 @app.get('/candidate/login')
 def login(user:Registration,request:Request,db:Session=Depends(get_db)):
+   
     result= db.execute(text('Select id,Email,Password,Email_Verified from Register where email=:email'),
                           {'email':user.Email}).all()
+    
     if len(result)==0:
         raise HTTPException(status_code=400,detail='User account does not exist!!')  
     if result[0][3]==0:
         raise HTTPException(status_code=419,detail='User Email is not verified before signin!')
     if not verify_password(user.password,result[0][2]):
         raise HTTPException(status_code=407,detail="Passwords do not match!")
+   
     request.session.clear()
     request.session['user_id']=result[0][0]
     request.session['email']=result[0][1]
     request.session['role']='candidate'
+   
     if request.session.get('user_id') is None:
         raise HTTPException(status_code=410,detail='Session is not created!')
+    
     return {'message':request.session.get('user_email'),}
 
 @app.get('/admin/login')
 def admin_login(admin:Registration,request:Request,db:Session=Depends(get_db)):
+    
      result=db.execute('Select * from Admin where Email=:email',
                        {'email':admin.Email})
+    
      if len(result)==0:
          raise HTTPException(status_code=400,detail='admin email does not match!')
      if not verify_password(admin.password,result[0][2]):
          raise HTTPException(status_code=407,detail='Passwords do not match!')
+    
      request.session.clear()
      request.session['email']=admin.Email
      request.session['role']='admin'
+     
      if  request.session.get('email') is None:
          raise HTTPException(status_code=410,detail='Sesion not created')
+     
      return {'message':request.session.get('email')}
 
 @app.post('/candidate/password_recovery')
-def update(email:str,db:Session=Depends(get_db)):
+async def update(email:str,db:Session=Depends(get_db)):
     #first ceck weter email is reistered or not
     result=db.execute(text('Select * from Register where Email=:email'),
                       {'email':email})
+    
     if not result:
         raise HTTPException(status_code=416,detail='email is not registered')
+   
     url_token= secrets.token_urlsafe(32)
     hashed_token = hashlib.sha256(url_token.encode('utf-8')).hexdigest
     expiry=datetime(timezone.utc)+timedelta(minutes=10)
+    
     res=db.execute(text('execute dbo.insert_token @Token=:token,@Expiry=:expiry,@Email=:email'),
                    {'token':hashed_token,'expiry':expiry,'email':email})
-    password_reset_link=f'{url_token}'
+    
+    password_reset_link=f'http://localhost:5173/verify-email?token={url_token}'
 
     #send email to user.
+    message =MessageSchema(
+                subject='Password recovery.',
+                recipients=[email],
+                body='<h1>Click on this link to update password'+ password_reset_link+'</h1>',
+                subtype=MessageType.html
+            )
+    fm=FastMail(conf)
+    await fm.send_message(message)
     
     return {'message':'Password reset mail sent.Link valid for 10 minutes'}
 
 @app.put('/candidate/password_update')
 def password(pt:Password,db:Session=Depends(get_db)):
+
+    hashed_token = hashlib.sha256(pt.token.encode('utf-8')).hexdigest
+    expiry = datetime(timezone.utc)
+
+    result=db.execute(text('Select Email from OAuth where Token=:token and Expiry >=:expiry'),
+                      {'token':hashed_token,'expiry':expiry}).all()
+   
+    if not result:
+        raise HTTPException(status_code=418,detail='Token expired')
     
-    return  
+    db.execute(text('Delete * from OAuth where Token=:token'),
+               {'token':hashed_token})
+    
+    encrypt=hash_password(pt.password)
+
+    db.execute(text('Update Register set Password=:encrypt where Email=:email;'),
+                   {
+                       'encrypt':encrypt,'email':result[0][2]
+                   })
+    
+    passwo = db.execute(text('Select Password from Register where Email=:email;'),{'email':result[0][2]})
+
+    if not verify_password(pt.password,passwo[0][0]):
+        raise HTTPException(status_code=421,detail='Password not updated!')
+    
+    return  {'message':'Password updated successfully'}
+
 
