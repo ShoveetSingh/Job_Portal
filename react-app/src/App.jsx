@@ -16,7 +16,7 @@ function App() {
       });
 
       const data = await response.json();
-
+console.log(data);
       setIsLoggedIn(data.logged_in);
     } catch (error) {
       console.error("Session check failed:", error);

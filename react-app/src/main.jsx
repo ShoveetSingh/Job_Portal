@@ -23,6 +23,7 @@ createRoot(document.getElementById("root")).render(
         <Route path="/verify-password" element={<Update_password />} />
         <Route path='/lo' element={<Logout/>}/>
         <Route path='/verify-email' element ={<VerifyEmail/>}/>
+        <Route path='/logout' element={<Logout/>}/>
       </Routes>
     </BrowserRouter>
   </StrictMode>,

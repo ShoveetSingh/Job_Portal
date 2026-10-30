@@ -2,7 +2,7 @@
 import { useState } from "react";
 
 function Password_reset() {
-  const [email, setEmail] = useState("");
+  const [Email, setEmail] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -12,13 +12,14 @@ function Password_reset() {
     setMessage("");
     const apiUrl = import.meta.env.VITE_API_URL;
     try {
-      const response = await fetch(`${apiUrl}/password-reset`, {
+      const response = await fetch(`${apiUrl}/password_recovery`, {
         method: "POST",
+        credentials:'include',
         headers: {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          email: email
+          Email: Email
         })
       });
 
@@ -53,7 +54,7 @@ function Password_reset() {
 
         <input
           type="email"
-          value={email}
+          value={Email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="Enter your registered email"
           required

@@ -9,6 +9,9 @@ class Password(BaseModel):
     token:str
 
 
+class mail(BaseModel):
+    Email:str
+
 class Registration(BaseModel):
     Email:str
     password:str

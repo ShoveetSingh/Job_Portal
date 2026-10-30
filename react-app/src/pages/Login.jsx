@@ -31,7 +31,7 @@ function Login() {
       }
 
       setMessage(data.message || "Login successful!");
-
+      console.log(data);
       setEmail("");
       setPassword("");
     } catch (error) {

@@ -3,7 +3,7 @@ from fastapi_mail import ConnectionConfig, FastMail, MessageSchema,MessageType
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from security import hash_password,verify_password
-from database import get_db,Token,Registration,Password
+from database import get_db,Token,Registration,Password,mail
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 import os
@@ -32,7 +32,7 @@ app.add_middleware(
     session_cookie='session',
     max_age=3600,
     same_site='lax',
-    https_only=True
+    https_only=False
 )
 
 conf = ConnectionConfig(
@@ -101,24 +101,26 @@ async def verify(t:Token,db:Session=Depends(get_db)):
      hashed_token = hashlib.sha256(t.token.encode('utf-8')).hexdigest()
      time = datetime.now(timezone.utc).replace(tzinfo=None)
      
-     result=db.execute(text('select * from OAuth where token=:hashed_token;'),
+     result=db.execute(text('select * from OAuth where Token=:hashed_token'),
                        {'hashed_token':hashed_token}).all()
+     db.commit()
      print(result)
      if len(result)==0:
          raise HTTPException(status_code=416,detail='Token does not exists.')
     
      db.execute(text('Delete from OAuth where Token=:token'),
                 {'token':hashed_token})
-    
+     db.commit()
      if result[0][1]<time:
          #delete from Register Table.
           db.execute(text('Delete from Register where Email=:email'),
                          {'email':result[0][2]})
+          db.commit()
           raise HTTPException(status_code=417,detail='Token validity expired!')
      #update Regsiter table email verified column.
      db.execute(text('Update Register set Email_Verified=:number where Email=:email'),
                 {'number':1,'email':result[0][2]})
-     
+     db.commit()
      return {'message':'Email successfully verified.'}
 
 @app.post('/logout')
@@ -127,12 +129,12 @@ async def logout(request:Request,response:Response):
     response.delete_cookie(key='session')
     return {'message':'User logged out.'}
 
-@app.get('/candidate/login')
+@app.post('/candidate/login')
 def login(user:Registration,request:Request,db:Session=Depends(get_db)):
    
-    result= db.execute(text('Select id,Email,Password,Email_Verified from Register where email=:email'),
+    result= db.execute(text('Select Candidate_ID,Email,Password,Email_Verified from Register where email=:email'),
                           {'email':user.Email}).all()
-    
+    db.commit()
     if len(result)==0:
         raise HTTPException(status_code=400,detail='User account does not exist!!')  
     if result[0][3]==0:
@@ -144,11 +146,11 @@ def login(user:Registration,request:Request,db:Session=Depends(get_db)):
     request.session['user_id']=result[0][0]
     request.session['email']=result[0][1]
     request.session['role']='candidate'
-   
+    print(request.session.get('email'))
     if request.session.get('user_id') is None:
         raise HTTPException(status_code=410,detail='Session is not created!')
     
-    return {'message':request.session.get('user_email'),}
+    return {'message':request.session.get('email'),}
 
 @app.get('/admin/login')
 def admin_login(admin:Registration,request:Request,db:Session=Depends(get_db)):
@@ -170,29 +172,29 @@ def admin_login(admin:Registration,request:Request,db:Session=Depends(get_db)):
      
      return {'message':request.session.get('email')}
 
-@app.post('/candidate/password_recovery')
-async def update(email:str,db:Session=Depends(get_db)):
+@app.post('/password_recovery')
+async def update(email:mail,db:Session=Depends(get_db)):
     #first ceck weter email is reistered or not
     result=db.execute(text('Select * from Register where Email=:email'),
-                      {'email':email})
-    
+                      {'email':email.Email})
+    db.commit()
     if not result:
         raise HTTPException(status_code=416,detail='email is not registered')
    
     url_token= secrets.token_urlsafe(32)
-    hashed_token = hashlib.sha256(url_token.encode('utf-8')).hexdigest
-    expiry=datetime(timezone.utc)+timedelta(minutes=10)
+    hashed_token = hashlib.sha256(url_token.encode('utf-8')).hexdigest()
+    expiry=datetime.now(timezone.utc).replace(tzinfo=None)+timedelta(minutes=10)
     
     res=db.execute(text('execute dbo.insert_token @Token=:token,@Expiry=:expiry,@Email=:email'),
-                   {'token':hashed_token,'expiry':expiry,'email':email})
-    
+                   {'token':hashed_token,'expiry':expiry,'email':email.Email})
+    db.commit()
     password_reset_link=f'http://localhost:5173/verify-password?token={url_token}'
 
     #send email to user.
     message =MessageSchema(
                 subject='Password recovery.',
-                recipients=[email],
-                body='<h1>Click on this link to update password'+ password_reset_link+'</h1>',
+                recipients=[email.Email],
+                body='<h1>Click on this link to update password '+ password_reset_link+'</h1>',
                 subtype=MessageType.html
             )
     fm=FastMail(conf)
@@ -200,37 +202,39 @@ async def update(email:str,db:Session=Depends(get_db)):
     
     return {'message':'Password reset mail sent.Link valid for 10 minutes'}
 
-@app.put('/candidate/password_update')
+@app.post('/update-password')
 def password(pt:Password,db:Session=Depends(get_db)):
 
-    hashed_token = hashlib.sha256(pt.token.encode('utf-8')).hexdigest
-    expiry = datetime(timezone.utc)
+    hashed_token = hashlib.sha256(pt.token.encode('utf-8')).hexdigest()
+    expiry = datetime.now(timezone.utc).replace(tzinfo=None)
 
-    result=db.execute(text('Select Email from OAuth where Token=:token and Expiry >=:expiry'),
+    result=db.execute(text('Select * from OAuth where Token=:token and Expiry >=:expiry'),
                       {'token':hashed_token,'expiry':expiry}).all()
-   
+    db.commit()
     if not result:
         raise HTTPException(status_code=418,detail='Token expired')
     
-    db.execute(text('Delete * from OAuth where Token=:token'),
+    db.execute(text('Delete from OAuth where Token=:token'),
                {'token':hashed_token})
-    
+    db.commit()
     encrypt=hash_password(pt.password)
 
     db.execute(text('Update Register set Password=:encrypt where Email=:email;'),
                    {
                        'encrypt':encrypt,'email':result[0][2]
                    })
+    db.commit()
     
-    passwo = db.execute(text('Select Password from Register where Email=:email;'),{'email':result[0][2]})
-
+    passwo = db.execute(text('Select Password from Register where Email=:email;'),{'email':result[0][2]}).all()
+    db.commit()
     if not verify_password(pt.password,passwo[0][0]):
         raise HTTPException(status_code=421,detail='Password not updated!')
     
     return  {'message':'Password updated successfully'}
 
 @app.get('/check-session')
-def check(req:Request,res:Response):
+def check(req:Request):
+    print(req.session)
     if  req.session.get('email') is None:
        return {'logged_in':False}
     else:
