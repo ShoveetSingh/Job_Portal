@@ -4,16 +4,16 @@ from urllib.parse import quote_plus
 from pydantic import BaseModel
 
 
-class Password:
+class Password(BaseModel):
     password:str
     token:str
 
 
-class Registration:
+class Registration(BaseModel):
     Email:str
     password:str
 
-class Token:
+class Token(BaseModel):
     token:str
 
 connection_string = (

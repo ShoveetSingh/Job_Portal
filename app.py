@@ -1,5 +1,5 @@
 from fastapi import FastAPI,Request,Response,HTTPException,Depends
-from fastapi_mail import ConnectionConfig, FastMail, MessageSchema, MessageType
+from fastapi_mail import ConnectionConfig, FastMail, MessageSchema,MessageType
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from security import hash_password,verify_password
@@ -11,7 +11,7 @@ from starlette.middleware.sessions import SessionMiddleware
 import secrets
 import hashlib
 from datetime import datetime,timedelta,timezone
-
+import uuid
 
 load_dotenv()
 
@@ -60,9 +60,9 @@ async def create_user(user:Registration,db:Session=Depends(get_db)):
         
     else:
         encrypt=hash_password(user.password)
-        
-        response=db.execute(text('execute dbo.insert_user @Email=:email,@Password=:password,@Email_Verified=:val'),
-                            {'email':user.Email,'password':encrypt,'val':0}).all()
+        id = str(uuid.uuid4())
+        response=db.execute(text('execute dbo.insert_user @Candidate_ID=:id,@Email=:email,@Password=:password,@Email_Verified=:val'),
+                            {'id':id,'email':user.Email,'password':encrypt,'val':0}).all()
         db.commit()
         
         if len(response)==0:
@@ -70,15 +70,15 @@ async def create_user(user:Registration,db:Session=Depends(get_db)):
                                 detail='Data could not be inserted.')
         else:
              url_token= secrets.token_urlsafe(32)
-             hashed_token = hashlib.sha256(url_token.encode('utf-8')).hexdigest
-             expiry = datetime.now(timezone.utc) + timedelta(minutes=15)
+             hashed_token = hashlib.sha256(url_token.encode('utf-8')).hexdigest()
+             expiry = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=15)
             
-             res=db.execute(text('execute dbo.insert_token @Token=:token,@Expiry=:expiry,@Email=email'),
-                            {'token':hashed_token,'expiry':expiry.replace(tzinfo=None),'email':user.Email})
-             
+             res=db.execute(text('execute dbo.insert_token @Token=:token,@Expiry=:expiry,@Email=:email'),
+                            {'token':hashed_token,'expiry':expiry.replace(tzinfo=None),'email':user.Email}).all()
+             db.commit()
+             print(res)
              if len(res)==0:
                  raise HTTPException(status_code=412,detail='Token cannot be stored in db.')
-            
              verification_link = f"http://localhost:5173/verify-email?token={url_token}"
              
              message =MessageSchema(
@@ -95,24 +95,24 @@ async def create_user(user:Registration,db:Session=Depends(get_db)):
             
              return {'message':'User registered! Mail sent.'}
 
-@app.post('/candidate/verify')
+@app.post('/verify-email')
 async def verify(t:Token,db:Session=Depends(get_db)):
      
-     hashed_token = hashlib.sha256(t.token.encode('utf-8')).hexdigest
-     time = datetime.now(timezone.utc)
+     hashed_token = hashlib.sha256(t.token.encode('utf-8')).hexdigest()
+     time = datetime.now(timezone.utc).replace(tzinfo=None)
      
      result=db.execute(text('select * from OAuth where token=:hashed_token;'),
                        {'hashed_token':hashed_token}).all()
-     
+     print(result)
      if len(result)==0:
          raise HTTPException(status_code=416,detail='Token does not exists.')
     
-     db.execute(text('Delete * from OAuth where Token=:token'),
+     db.execute(text('Delete from OAuth where Token=:token'),
                 {'token':hashed_token})
     
      if result[0][1]<time:
          #delete from Register Table.
-          db.execute(text('Delete * from Register where Email=:email'),
+          db.execute(text('Delete from Register where Email=:email'),
                          {'email':result[0][2]})
           raise HTTPException(status_code=417,detail='Token validity expired!')
      #update Regsiter table email verified column.
@@ -123,7 +123,6 @@ async def verify(t:Token,db:Session=Depends(get_db)):
 
 @app.post('/logout')
 async def logout(request:Request,response:Response):
-   
     request.session.clear()
     response.delete_cookie(key='session')
     return {'message':'User logged out.'}
@@ -187,7 +186,7 @@ async def update(email:str,db:Session=Depends(get_db)):
     res=db.execute(text('execute dbo.insert_token @Token=:token,@Expiry=:expiry,@Email=:email'),
                    {'token':hashed_token,'expiry':expiry,'email':email})
     
-    password_reset_link=f'http://localhost:5173/verify-email?token={url_token}'
+    password_reset_link=f'http://localhost:5173/verify-password?token={url_token}'
 
     #send email to user.
     message =MessageSchema(
@@ -230,4 +229,9 @@ def password(pt:Password,db:Session=Depends(get_db)):
     
     return  {'message':'Password updated successfully'}
 
-
+@app.get('/check-session')
+def check(req:Request,res:Response):
+    if  req.session.get('email') is None:
+       return {'logged_in':False}
+    else:
+        return {'logged_in':True}
