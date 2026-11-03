@@ -12,6 +12,7 @@ import secrets
 import hashlib
 from datetime import datetime,timedelta,timezone
 import uuid
+import base64
 
 load_dotenv()
 
@@ -152,16 +153,15 @@ def login(user:Registration,request:Request,db:Session=Depends(get_db)):
     
     return {'message':request.session.get('email'),}
 
-@app.get('/admin/login')
+@app.post('/admin/login')
 def admin_login(admin:Registration,request:Request,db:Session=Depends(get_db)):
     
-     result=db.execute('Select * from Admin where Email=:email',
-                       {'email':admin.Email})
-    
-     if len(result)==0:
-         raise HTTPException(status_code=400,detail='admin email does not match!')
-     if not verify_password(admin.password,result[0][2]):
-         raise HTTPException(status_code=407,detail='Passwords do not match!')
+     admin_email=os.getenv('ADMIN_EMAIL')
+     admin_password=os.getenv('ADMIN_PASSWORD')
+     if(admin.Email!=admin_email or admin.password!=admin_password):
+         raise HTTPException(status_code=400,detail='admin credential does not match!')
+    #  if not verify_password(admin.password,result[0][2]):
+    #      raise HTTPException(status_code=407,detail='Passwords do not match!')
     
      request.session.clear()
      request.session['email']=admin.Email
@@ -232,10 +232,28 @@ def password(pt:Password,db:Session=Depends(get_db)):
     
     return  {'message':'Password updated successfully'}
 
+@app.post('/user_data')
+def user_data(Email:mail,req:Request,db:Session=Depends(get_db)):
+     if req.session.get('email') is  None:
+         raise HTTPException(status_code=613,detail='Not in!')
+     if Email.Email != req.session.get('email'):
+         raise HTTPException(status_code=612,detail="Not admin!")
+     rows=db.execute(text('Select R.Candidate_ID,R.Email,R.Email_Verified,R.UserName,R.Phone,R.Father_Name,R.Address,R.Profession,F.Resume from Register as R left Join User_Files as F on R.Email=F.Email;')).mappings().all()
+     data=[]
+     for row in rows:
+       item=dict(row)
+       if item['Resume'] is not None:
+        item['Resume'] = base64.b64encode(
+            item['Resume']
+        ).decode("utf-8")
+        print(item['Resume'])
+       data.append(item)
+     return {'data':data}
+
 @app.get('/check-session')
 def check(req:Request):
     print(req.session)
     if  req.session.get('email') is None:
-       return {'logged_in':False}
+       return {'logged_in':False,'email':'','role':''}
     else:
-        return {'logged_in':True}
+        return {'logged_in':True,'email':req.session.get('email'),'role':req.session.get('role')}

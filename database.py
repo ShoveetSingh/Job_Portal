@@ -9,6 +9,7 @@ class Password(BaseModel):
     token:str
 
 
+
 class mail(BaseModel):
     Email:str
 

@@ -6,8 +6,8 @@ import Register from './pages/Register.jsx'
 import Login from './pages/Login.jsx'
 import Update_password from './pages/Update_password.jsx'
 import Password_reset from './pages/Password_reset.jsx'
-
-
+import AdminLogin from './pages/AdminLogin.jsx'
+import AdminPanel from './pages/AdminPanel.jsx'
 import { BrowserRouter,Routes,Route } from "react-router-dom";
 import Logout from './pages/Logout.jsx'
 import VerifyEmail from './pages/VerifyEmail.jsx'
@@ -24,6 +24,8 @@ createRoot(document.getElementById("root")).render(
         <Route path='/lo' element={<Logout/>}/>
         <Route path='/verify-email' element ={<VerifyEmail/>}/>
         <Route path='/logout' element={<Logout/>}/>
+        <Route path='/AdminLogin' element ={<AdminLogin/>}/>
+        <Route path='/AdminPanel' element={<AdminPanel/>}/>
       </Routes>
     </BrowserRouter>
   </StrictMode>,
