@@ -3,7 +3,7 @@ from fastapi_mail import ConnectionConfig, FastMail, MessageSchema,MessageType
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from security import hash_password,verify_password
-from database import get_db,Token,Registration,Password,mail,Profile
+from database import get_db,Token,Registration,Password,mail
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 import os
@@ -12,8 +12,7 @@ import secrets
 import hashlib
 from datetime import datetime,timedelta,timezone
 import uuid
-import base64
-from fastapi import UploadFile,File
+from fastapi import UploadFile,File,Form
 
 load_dotenv()
 
@@ -251,14 +250,26 @@ def data(Email:str,req:Request,db:Session=Depends(get_db)):
     return {'message':result}
 
 @app.put('/update-profile')
-async def update_profile(Profile:Profile,req:Request,Resume:UploadFile=File(None),Photo:UploadFile=File(None),db:Session=Depends(get_db)):
+async def update_profile(  req:Request,
+                         UserName: str = Form(...),
+                         Phone: int = Form(...),
+                         Address: str = Form(...),
+                         Father_Name: str = Form(...),
+                         Profession: str = Form(...),
+                         Resume:UploadFile=File(None),
+                         Photo:UploadFile=File(None),
+                         db:Session=Depends(get_db)):
+
     resume_path=''
     email=''
     photo_path=''
+
     if  req.session.get('email') is None:
+        print("not logged in!")
         raise  HTTPException(status_code=666,detail="no session user!")
     else:
         email=req.session.get('email')
+
     if Resume and Resume.filename:
        content = await Resume.read()
        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
@@ -266,6 +277,7 @@ async def update_profile(Profile:Profile,req:Request,Resume:UploadFile=File(None
        resume_path = os.path.join("uploads", "Resumes", name)
        with open(resume_path, "wb") as f:
            f.write(content)
+
     if Photo and Photo.filename:
         content = await Photo.read()
         timestamp=datetime.now().strftime("%Y%m%d_%H%M%S_%f")
@@ -273,19 +285,21 @@ async def update_profile(Profile:Profile,req:Request,Resume:UploadFile=File(None
         photo_path=os.path.join('uploads','Photos',name)
         with open(photo_path, "wb") as f:
                    f.write(content)
+
     db.execute(text('UPDATE User_Files SET Resume = :resume, Photo = :photo WHERE Email = :email'),
                       { "resume": resume_path,
                         "photo": photo_path,
                         "email": email})
     db.commit()
     db.execute(text('update Register set UserName=:username,Address=:address,Profession=:pro,Father_Name=:fat,Phone=:p where Email=:email'),
-               {'username':Profile.UserName,
-                'address':Profile.Address,
-                'pro':Profile.Profession,
-                'fat':Profile.Father_Name,
-                'p':Profile.Phone,
+               {'username':UserName,
+                'address':Address,
+                'pro':Profession,
+                'fat':Father_Name,
+                'p':Phone,
                 'email':email})
     db.commit()
+
     return {'message':'Profile updated!'}
 
 @app.get('/check-session')

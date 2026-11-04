@@ -11,6 +11,7 @@ import AdminPanel from './pages/AdminPanel.jsx'
 import { BrowserRouter,Routes,Route } from "react-router-dom";
 import Logout from './pages/Logout.jsx'
 import VerifyEmail from './pages/VerifyEmail.jsx'
+import Update from './pages/Update.jsx'
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>
@@ -26,6 +27,7 @@ createRoot(document.getElementById("root")).render(
         <Route path='/logout' element={<Logout/>}/>
         <Route path='/AdminLogin' element ={<AdminLogin/>}/>
         <Route path='/AdminPanel' element={<AdminPanel/>}/>
+        <Route path='/UpdateProfile' element={<Update/>}/>
       </Routes>
     </BrowserRouter>
   </StrictMode>,
