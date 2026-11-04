@@ -85,7 +85,7 @@ function AdminPanel(){
                     <td>{item.Profession}</td>
                     <td>
                       <a
-                        href={`data:application/pdf;base64,${item[8]}`}
+                        href={`${apiUrl}/${item.Resume}`}
                         target="_blank"
                         rel="noreferrer"
                       >

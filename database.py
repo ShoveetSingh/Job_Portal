@@ -8,7 +8,12 @@ class Password(BaseModel):
     password:str
     token:str
 
-
+class Profile(BaseModel):
+    UserName:str
+    Phone:int
+    Address:str
+    Father_Name:str
+    Profession:str
 
 class mail(BaseModel):
     Email:str

@@ -3,7 +3,7 @@ from fastapi_mail import ConnectionConfig, FastMail, MessageSchema,MessageType
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from security import hash_password,verify_password
-from database import get_db,Token,Registration,Password,mail
+from database import get_db,Token,Registration,Password,mail,Profile
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 import os
@@ -13,6 +13,7 @@ import hashlib
 from datetime import datetime,timedelta,timezone
 import uuid
 import base64
+from fastapi import UploadFile,File
 
 load_dotenv()
 
@@ -65,7 +66,8 @@ async def create_user(user:Registration,db:Session=Depends(get_db)):
         response=db.execute(text('execute dbo.insert_user @Candidate_ID=:id,@Email=:email,@Password=:password,@Email_Verified=:val'),
                             {'id':id,'email':user.Email,'password':encrypt,'val':0}).all()
         db.commit()
-        
+        db.execute(text('insert into User_Files(Email) values(:email)'),{'email':user.Email})
+        db.commit()
         if len(response)==0:
             raise HTTPException(status_code=404,
                                 detail='Data could not be inserted.')
@@ -239,16 +241,52 @@ def user_data(Email:mail,req:Request,db:Session=Depends(get_db)):
      if Email.Email != req.session.get('email'):
          raise HTTPException(status_code=612,detail="Not admin!")
      rows=db.execute(text('Select R.Candidate_ID,R.Email,R.Email_Verified,R.UserName,R.Phone,R.Father_Name,R.Address,R.Profession,F.Resume from Register as R left Join User_Files as F on R.Email=F.Email;')).mappings().all()
-     data=[]
-     for row in rows:
-       item=dict(row)
-       if item['Resume'] is not None:
-        item['Resume'] = base64.b64encode(
-            item['Resume']
-        ).decode("utf-8")
-        print(item['Resume'])
-       data.append(item)
-     return {'data':data}
+     return {'data':rows}
+
+@app.post('/data')
+def data(Email:str,req:Request,db:Session=Depends(get_db)):
+    result=db.execute(text('Select UserName,Phone,Father_Name,Address,Profession from Register where Email=:email'),{'email':Email}).all()
+    if  len(result)==0:
+        raise HTTPException(status_code=532,detail="No data found")
+    return {'message':result}
+
+@app.put('/update-profile')
+async def update_profile(Profile:Profile,req:Request,Resume:UploadFile=File(None),Photo:UploadFile=File(None),db:Session=Depends(get_db)):
+    resume_path=''
+    email=''
+    photo_path=''
+    if  req.session.get('email') is None:
+        raise  HTTPException(status_code=666,detail="no session user!")
+    else:
+        email=req.session.get('email')
+    if Resume and Resume.filename:
+       content = await Resume.read()
+       timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+       name=f'{timestamp}.pdf'
+       resume_path = os.path.join("uploads", "Resumes", name)
+       with open(resume_path, "wb") as f:
+           f.write(content)
+    if Photo and Photo.filename:
+        content = await Photo.read()
+        timestamp=datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        name = f'{timestamp}.{os.path.splitext(Photo.filename)[1]}'
+        photo_path=os.path.join('uploads','Photos',name)
+        with open(photo_path, "wb") as f:
+                   f.write(content)
+    db.execute(text('UPDATE User_Files SET Resume = :resume, Photo = :photo WHERE Email = :email'),
+                      { "resume": resume_path,
+                        "photo": photo_path,
+                        "email": email})
+    db.commit()
+    db.execute(text('update Register set UserName=:username,Address=:address,Profession=:pro,Father_Name=:fat,Phone=:p where Email=:email'),
+               {'username':Profile.UserName,
+                'address':Profile.Address,
+                'pro':Profile.Profession,
+                'fat':Profile.Father_Name,
+                'p':Profile.Phone,
+                'email':email})
+    db.commit()
+    return {'message':'Profile updated!'}
 
 @app.get('/check-session')
 def check(req:Request):
