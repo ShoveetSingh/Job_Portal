@@ -13,11 +13,13 @@ import hashlib
 from datetime import datetime,timedelta,timezone
 import uuid
 from fastapi import UploadFile,File,Form
+from fastapi.staticfiles import StaticFiles
 
 load_dotenv()
 
 app=FastAPI()
 
+app.mount("/uploads/Resumes", StaticFiles(directory='uploads/Resumes'), name="uploads/Resumes")
 
 app.add_middleware(
     CORSMiddleware,
@@ -243,11 +245,14 @@ def user_data(Email:mail,req:Request,db:Session=Depends(get_db)):
      return {'data':rows}
 
 @app.post('/data')
-def data(Email:str,req:Request,db:Session=Depends(get_db)):
-    result=db.execute(text('Select UserName,Phone,Father_Name,Address,Profession from Register where Email=:email'),{'email':Email}).all()
+def data(req:Request,db:Session=Depends(get_db)):
+    result=db.execute(text('Select UserName,Phone,Father_Name,Address,Profession from Register where Email=:email'),{'email':req.session.get("email")}).mappings().all()
+    db.commit()
     if  len(result)==0:
         raise HTTPException(status_code=532,detail="No data found")
-    return {'message':result}
+    print(result)
+    dat=[dict(row) for row in result]
+    return {'message':dat}
 
 @app.put('/update-profile')
 async def update_profile(  req:Request,
@@ -276,7 +281,14 @@ async def update_profile(  req:Request,
        name=f'{timestamp}.pdf'
        resume_path = os.path.join("uploads", "Resumes", name)
        with open(resume_path, "wb") as f:
+           xxx = db.execute(text('Select Resume from User_Files where Email=:email'),{'email':email}).all()
+           if len(xxx)!=0:
+              os.remove(xxx[0][0])
            f.write(content)
+       db.execute(text('UPDATE User_Files SET Resume = :resume WHERE Email = :email'),
+                      { "resume": resume_path,
+                        "email": email})
+       db.commit()
 
     if Photo and Photo.filename:
         content = await Photo.read()
@@ -284,13 +296,17 @@ async def update_profile(  req:Request,
         name = f'{timestamp}.{os.path.splitext(Photo.filename)[1]}'
         photo_path=os.path.join('uploads','Photos',name)
         with open(photo_path, "wb") as f:
+                   xxx = db.execute(text('Select Photo from User_Files where Email=:email'),{'email':email}).all()
+                   db.commit()
+                   if len(xxx)!=0:
+                        print(xxx[0][0])
+                        os.remove(xxx[0][0])
                    f.write(content)
-
-    db.execute(text('UPDATE User_Files SET Resume = :resume, Photo = :photo WHERE Email = :email'),
-                      { "resume": resume_path,
-                        "photo": photo_path,
+        db.execute(text('UPDATE User_Files SET  Photo = :photo WHERE Email = :email'),
+                      { "photo": photo_path,
                         "email": email})
-    db.commit()
+        db.commit()
+
     db.execute(text('update Register set UserName=:username,Address=:address,Profession=:pro,Father_Name=:fat,Phone=:p where Email=:email'),
                {'username':UserName,
                 'address':Address,
@@ -301,6 +317,7 @@ async def update_profile(  req:Request,
     db.commit()
 
     return {'message':'Profile updated!'}
+
 
 @app.get('/check-session')
 def check(req:Request):

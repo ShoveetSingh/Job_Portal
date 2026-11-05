@@ -12,6 +12,7 @@ function Update() {
   });
   const apiUrl = import.meta.env.VITE_API_URL;
   const nav=useNavigate();
+
   useEffect(() => {
     async function getData() {
       const session = await fetch(`${apiUrl}/check-session`,{
@@ -19,21 +20,22 @@ function Update() {
       });
 
       const check = await session.json();
-
+      console.log(check);
       if (check.logged_in) {
         const res = await fetch(`${apiUrl}/data`, {
-          method:"POST",
+          method: "POST",
           credentials: "include",
-          body:check.email,
+          headers: {
+            "Content-Type": "application/json",
+          },
         });
         const data = await res.json();
-
         setForm({
-          UserName: data.message.result[0][0] || "",
-          Phone: data.message.result[0][1] || "",
-          Father_Name: data.message.result[0][2] || "",
-          Address: data.message.result[0][3] || "",
-          Profession: data.message.result[0][4] || "",
+          UserName: data.message[0].UserName || "",
+          Phone: data.message[0].Phone || 0,
+          Father_Name: data.message[0].Father_Name || "",
+          Address: data.message[0].Address || "",
+          Profession: data.message[0].Profession || "",
           Resume: null,
           photo: null,
         });
