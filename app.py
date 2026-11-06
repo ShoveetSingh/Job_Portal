@@ -1,9 +1,9 @@
-from fastapi import FastAPI,Request,Response,HTTPException,Depends
+from fastapi import FastAPI,Request,Response,HTTPException,Depends,UploadFile,File,Form
 from fastapi_mail import ConnectionConfig, FastMail, MessageSchema,MessageType
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from security import hash_password,verify_password
-from database import get_db,Token,Registration,Password,mail
+from database import get_db,Token,Registration,Password,mail,Payment
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 import os
@@ -12,8 +12,9 @@ import secrets
 import hashlib
 from datetime import datetime,timedelta,timezone
 import uuid
-from fastapi import UploadFile,File,Form
 from fastapi.staticfiles import StaticFiles
+import razorpay
+
 
 load_dotenv()
 
@@ -49,6 +50,10 @@ conf = ConnectionConfig(
     USE_CREDENTIALS=True
 )
 
+client = razorpay.Client( auth=(
+        os.getenv("RAZORPAY_KEY_ID"),
+        os.getenv("RAZORPAY_KEY_SECRET")
+    ))
 
 @app.post('/candidate/register')
 async def create_user(user:Registration,db:Session=Depends(get_db)):
@@ -241,7 +246,7 @@ def user_data(Email:mail,req:Request,db:Session=Depends(get_db)):
          raise HTTPException(status_code=613,detail='Not in!')
      if Email.Email != req.session.get('email'):
          raise HTTPException(status_code=612,detail="Not admin!")
-     rows=db.execute(text('Select R.Candidate_ID,R.Email,R.Email_Verified,R.UserName,R.Phone,R.Father_Name,R.Address,R.Profession,F.Resume from Register as R left Join User_Files as F on R.Email=F.Email;')).mappings().all()
+     rows=db.execute(text('Select R.Candidate_ID,R.Email,R.Email_Verified,R.UserName,R.Phone,R.Father_Name,R.Address,R.Profession,R.Paid,F.Resume from Register as R left Join User_Files as F on R.Email=F.Email;')).mappings().all()
      return {'data':rows}
 
 @app.post('/data')
@@ -317,6 +322,77 @@ async def update_profile(  req:Request,
     db.commit()
 
     return {'message':'Profile updated!'}
+
+@app.post('/check-payment')
+def check(req:Request,db:Session=Depends(get_db)):
+    if req.session.get('email') is None:
+        raise HTTPException(status_code=999,detail='Security breached')
+    result=db.execute(text('Select Paid from Register where Email=:email'),{'email':req.session.get('email')}).mappings().all()
+    if result[0].Paid is None:
+        return {'message':True}
+    else:
+        return {"message":False}
+
+@app.post('/create-order')
+def create(req:Request,db:Session=Depends(get_db)):
+        email = req.session.get("email")
+        if not email:
+           raise HTTPException(status_code=401)
+        amount = os.getenv("AMOUNT")
+
+        order = client.order.create({
+        "amount": amount,
+        "currency": "INR",
+        "payment_capture": 1
+    })
+
+        return {
+        "order_id": order["id"],
+        "amount": amount,
+        "currency": "INR",
+        "key_id": os.getenv("RAZORPAY_KEY_ID")
+    }
+
+@app.post('/verify-payment')
+async def verify(details:Payment,req:Request,db:Session=Depends(get_db)):
+    try:
+        client.utility.verify_payment_signature({
+         'razorpay_order_id': details.razorpay_order_id,
+         'razorpay_payment_id': details.razorpay_payment_id,
+         'razorpay_signature': details.razorpay_signature
+     })
+        #i will update paid column in table 
+    except SignatureVerificationError:
+             raise HTTPException(
+            status_code=400,
+            detail="Invalid payment signature"
+        )
+    payment = client.payment.fetch(
+    details.razorpay_payment_id
+)
+
+    expected_amount = os.getenv("AMOUNT")
+ 
+# Verify order ID
+    if payment["order_id"] != details.razorpay_order_id:
+         raise HTTPException(400, "Order ID mismatch")
+
+# Verify payment status
+    if payment["status"] != "captured":
+         raise HTTPException(400, "Payment not captured")
+
+# Verify amount
+    if payment["amount"] != expected_amount:
+         raise HTTPException(400, "Incorrect payment amount")
+
+# Verify currency
+    if payment["currency"] != "INR":
+         raise HTTPException(400, "Invalid currency")
+    
+    db.execute(text('Update Register set Paid=:paid where Email=:email'),{'paid':'YES','email':req.session.get('email')})
+    db.commit()
+    
+    return {'message':'Payment is Done'}
 
 
 @app.get('/check-session')

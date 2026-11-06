@@ -15,6 +15,11 @@ class Profile(BaseModel):
     Father_Name:str
     Profession:str
 
+class Payment(BaseModel):
+    razorpay_payment_id: str
+    razorpay_order_id: str
+    razorpay_signature: str
+
 class mail(BaseModel):
     Email:str
 

@@ -12,6 +12,7 @@ import { BrowserRouter,Routes,Route } from "react-router-dom";
 import Logout from './pages/Logout.jsx'
 import VerifyEmail from './pages/VerifyEmail.jsx'
 import Update from './pages/Update.jsx'
+import Payment from './pages/Payment.jsx'
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>
@@ -28,7 +29,8 @@ createRoot(document.getElementById("root")).render(
         <Route path='/AdminLogin' element ={<AdminLogin/>}/>
         <Route path='/AdminPanel' element={<AdminPanel/>}/>
         <Route path='/UpdateProfile' element={<Update/>}/>
+        <Route path='/payment' element={<Payment/>}/>
       </Routes>
     </BrowserRouter>
-  </StrictMode>,
+  </StrictMode>
 );

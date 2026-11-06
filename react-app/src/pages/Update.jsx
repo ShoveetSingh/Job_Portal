@@ -62,16 +62,28 @@ function Update() {
     Object.entries(form).forEach(([key, value]) => {
       if (value !== null) data.append(key, value);
     });
+    
+     const response = await fetch(`${apiUrl}/check-payment`, {
+       method: "PUT",
+       credentials: "include",
+     });
+
+     const paid = await response.json();
+     if (paid.message){
 
     const res = await fetch(`${apiUrl}/update-profile`, {
       method: "PUT",
       credentials: "include",
       body: data,
     });
-
+      
+    
     const result = await res.json();
 
     console.log(result);
+}
+else
+     window.open("/payment", "_blank", "noopener,noreferrer");
   };
 
   return (
