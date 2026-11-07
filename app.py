@@ -14,7 +14,7 @@ from datetime import datetime,timedelta,timezone
 import uuid
 from fastapi.staticfiles import StaticFiles
 import razorpay
-
+from razorpay.errors import SignatureVerificationError
 
 load_dotenv()
 
@@ -355,6 +355,7 @@ def create(req:Request,db:Session=Depends(get_db)):
 
 @app.post('/verify-payment')
 async def verify(details:Payment,req:Request,db:Session=Depends(get_db)):
+    
     try:
         client.utility.verify_payment_signature({
          'razorpay_order_id': details.razorpay_order_id,
@@ -363,6 +364,7 @@ async def verify(details:Payment,req:Request,db:Session=Depends(get_db)):
      })
         #i will update paid column in table 
     except SignatureVerificationError:
+             print(SignatureVerificationError)
              raise HTTPException(
             status_code=400,
             detail="Invalid payment signature"
@@ -371,29 +373,29 @@ async def verify(details:Payment,req:Request,db:Session=Depends(get_db)):
     details.razorpay_payment_id
 )
 
-    expected_amount = os.getenv("AMOUNT")
+    expected_amount = 100
  
 # Verify order ID
     if payment["order_id"] != details.razorpay_order_id:
-         raise HTTPException(400, "Order ID mismatch")
+         raise HTTPException(401, "Order ID mismatch")
 
 # Verify payment status
     if payment["status"] != "captured":
-         raise HTTPException(400, "Payment not captured")
+         raise HTTPException(402, "Payment not captured")
 
 # Verify amount
+    print(payment["amount"])
     if payment["amount"] != expected_amount:
-         raise HTTPException(400, "Incorrect payment amount")
+         raise HTTPException(403, "Incorrect payment amount")
 
 # Verify currency
     if payment["currency"] != "INR":
-         raise HTTPException(400, "Invalid currency")
-    
-    db.execute(text('Update Register set Paid=:paid where Email=:email'),{'paid':'YES','email':req.session.get('email')})
+         raise HTTPException(404, "Invalid currency")
+    email = req.session.get('email')
+    db.execute(text('Update Register set Paid=:paid where Email=:email'),{'paid':'YES','email':email})
     db.commit()
-    
-    return {'message':'Payment is Done'}
 
+    return {'message':'Payment is Done'}
 
 @app.get('/check-session')
 def check(req:Request):
