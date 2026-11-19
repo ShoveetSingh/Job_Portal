@@ -290,10 +290,14 @@ async def update_profile(  req:Request,
            if len(xxx)!=0:
               os.remove(xxx[0][0])
            f.write(content)
-       db.execute(text('UPDATE User_Files SET Resume = :resume WHERE Email = :email'),
+       try:
+           db.execute(text('UPDATE User_Files SET Resume = :resume WHERE Email = :email'),
                       { "resume": resume_path,
                         "email": email})
-       db.commit()
+           db.commit()
+       except Exception as e:
+           db.rollback()
+           raise HTTPException(status_code=199,details=e)
 
     if Photo and Photo.filename:
         content = await Photo.read()
@@ -307,19 +311,26 @@ async def update_profile(  req:Request,
                         print(xxx[0][0])
                         os.remove(xxx[0][0])
                    f.write(content)
-        db.execute(text('UPDATE User_Files SET  Photo = :photo WHERE Email = :email'),
+        try:
+            db.execute(text('UPDATE User_Files SET  Photo = :photo WHERE Email = :email'),
                       { "photo": photo_path,
                         "email": email})
-        db.commit()
-
-    db.execute(text('update Register set UserName=:username,Address=:address,Profession=:pro,Father_Name=:fat,Phone=:p where Email=:email'),
+            db.commit()
+        except Exception as e:
+                    db.rollback()
+                    raise HTTPException(details=e)
+        try:
+           db.execute(text('update Register set UserName=:username,Address=:address,Profession=:pro,Father_Name=:fat,Phone=:p where Email=:email'),
                {'username':UserName,
                 'address':Address,
                 'pro':Profession,
                 'fat':Father_Name,
                 'p':Phone,
                 'email':email})
-    db.commit()
+           db.commit()
+        except Exception as e:
+             db.rollback()
+             raise HTTPException(details=e)
 
     return {'message':'Profile updated!'}
 
