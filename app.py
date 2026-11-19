@@ -50,7 +50,7 @@ conf = ConnectionConfig(
     USE_CREDENTIALS=True
 )
 
-client = razorpay.Client( auth=(
+client = razorpay.Client(auth=(
         os.getenv("RAZORPAY_KEY_ID"),
         os.getenv("RAZORPAY_KEY_SECRET")
     ))
@@ -328,7 +328,8 @@ def check(req:Request,db:Session=Depends(get_db)):
     if req.session.get('email') is None:
         raise HTTPException(status_code=999,detail='Security breached')
     result=db.execute(text('Select Paid from Register where Email=:email'),{'email':req.session.get('email')}).mappings().all()
-    if result[0].Paid is None:
+    print(result[0])
+    if result[0].Paid =='YES':
         return {'message':True}
     else:
         return {"message":False}
@@ -362,7 +363,6 @@ async def verify(details:Payment,req:Request,db:Session=Depends(get_db)):
          'razorpay_payment_id': details.razorpay_payment_id,
          'razorpay_signature': details.razorpay_signature
      })
-        #i will update paid column in table 
     except SignatureVerificationError:
              print(SignatureVerificationError)
              raise HTTPException(
@@ -370,11 +370,10 @@ async def verify(details:Payment,req:Request,db:Session=Depends(get_db)):
             detail="Invalid payment signature"
         )
     payment = client.payment.fetch(
-    details.razorpay_payment_id
-)
-
+    details.razorpay_payment_id)
     expected_amount = 100
- 
+    print(details.razorpay_payment_id)
+    print(payment)
 # Verify order ID
     if payment["order_id"] != details.razorpay_order_id:
          raise HTTPException(401, "Order ID mismatch")
@@ -391,9 +390,43 @@ async def verify(details:Payment,req:Request,db:Session=Depends(get_db)):
 # Verify currency
     if payment["currency"] != "INR":
          raise HTTPException(404, "Invalid currency")
+    
     email = req.session.get('email')
-    db.execute(text('Update Register set Paid=:paid where Email=:email'),{'paid':'YES','email':email})
-    db.commit()
+    
+    id=payment["id"]
+    status=payment["status"]
+    order_id=payment["order_id"]
+    val='no'
+    if payment["captured"] is True:
+        val='yes'
+    created_at=datetime.fromtimestamp(payment["created_at"])
+    try:
+       db.execute(text('insert into Payments(Payment_ID,Email,Order_ID,Amount,Status,Created_At,Captured) values(:id,:email,:order,:amount,:status,:created,:captured)'),
+               {'id':id,'email':email,'order':order_id,'amount':expected_amount,'status':status,'created':created_at,'captured':val})
+
+       db.execute(text('Update Register set Paid=:paid where Email=:email'),{'paid':'YES','email':email})
+       db.commit()
+    except Exception as e:
+         db.rollback()
+         raise HTTPException(
+                    status_code=888,
+                    detail=e
+                )
+    try:
+          message = MessageSchema(
+                        subject='Payment confirmation mail',
+                        recipients=[email],
+                        body='<h1>Your payment id is '+id+
+                             ' and order id is '+order_id,
+                         subtype=MessageType.html
+                     )
+          fm=FastMail(conf)
+          await fm.send_message(message)
+    except Exception as e:
+         raise HTTPException(
+                            status_code=889,
+                            detail=e
+                        )
 
     return {'message':'Payment is Done'}
 

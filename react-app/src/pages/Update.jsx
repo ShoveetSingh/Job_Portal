@@ -64,12 +64,13 @@ function Update() {
     });
     
      const response = await fetch(`${apiUrl}/check-payment`, {
-       method: "PUT",
+       method: "POST",
        credentials: "include",
      });
 
      const paid = await response.json();
-     if (paid.message){
+     console.log(paid.message);
+     if (paid.message==true){
 
     const res = await fetch(`${apiUrl}/update-profile`, {
       method: "PUT",
