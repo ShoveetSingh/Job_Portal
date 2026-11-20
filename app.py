@@ -20,6 +20,8 @@ load_dotenv()
 
 app=FastAPI()
 
+url=os.getenv('FRONT_URL')
+
 app.mount("/uploads/Resumes", StaticFiles(directory='uploads/Resumes'), name="uploads/Resumes")
 
 app.add_middleware(
@@ -88,7 +90,7 @@ async def create_user(user:Registration,db:Session=Depends(get_db)):
              print(res)
              if len(res)==0:
                  raise HTTPException(status_code=412,detail='Token cannot be stored in db.')
-             verification_link = f"http://localhost:5173/verify-email?token={url_token}"
+             verification_link = f"{url}/verify-email?token={url_token}"
              
              message =MessageSchema(
             subject='Congratulations user you have successfully registered.',
@@ -196,7 +198,7 @@ async def update(email:mail,db:Session=Depends(get_db)):
     res=db.execute(text('execute dbo.insert_token @Token=:token,@Expiry=:expiry,@Email=:email'),
                    {'token':hashed_token,'expiry':expiry,'email':email.Email})
     db.commit()
-    password_reset_link=f'http://localhost:5173/verify-password?token={url_token}'
+    password_reset_link=f'{url}/verify-password?token={url_token}'
 
     #send email to user.
     message =MessageSchema(
@@ -268,6 +270,8 @@ async def update_profile(  req:Request,
                          Profession: str = Form(...),
                          Resume:UploadFile=File(None),
                          Photo:UploadFile=File(None),
+                         Salary:str=Form(...),
+                         Post:str=Form(...),
                          db:Session=Depends(get_db)):
 
     resume_path=''
@@ -320,12 +324,14 @@ async def update_profile(  req:Request,
                     db.rollback()
                     raise HTTPException(details=e)
         try:
-           db.execute(text('update Register set UserName=:username,Address=:address,Profession=:pro,Father_Name=:fat,Phone=:p where Email=:email'),
+           db.execute(text('update Register set UserName=:username,Address=:address,Expected_Salary=:s,Apply_for_Post=:a,Profession=:pro,Father_Name=:fat,Phone=:p where Email=:email'),
                {'username':UserName,
                 'address':Address,
                 'pro':Profession,
                 'fat':Father_Name,
                 'p':Phone,
+                'a':Post,
+                's':Salary,
                 'email':email})
            db.commit()
         except Exception as e:
